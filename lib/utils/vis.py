@@ -382,7 +382,7 @@ def save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, outpu
             plt.close(0)
 
 def save_debug_3d_json_demo(config, meta, final_poses, poses, proposal_centers, output_dir, vis=False):
-    output = os.path.join(output_dir, 'demo')
+    output = os.path.join(output_dir, 'blenderfig')
     os.makedirs(output, exist_ok=True)
 
     batch_size = final_poses.shape[0]

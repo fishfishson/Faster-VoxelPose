@@ -29,42 +29,6 @@ DEBUG = False
 
 body25topanoptic15 = [1,0,8,5,6,7,12,13,14,2,3,4,9,10,11]
 
-seq_split = {
-    'TRAIN_LIST': ['s02', 's04'],
-    'VAL_LIST': ['s03'],
-    'TEST_LIST': ['s03'],
-    'CAM_LIST': None
-}
-
-pose_split = {
-    'TRAIN_LIST': [  
-        'Hug',
-        'Hit',
-        'Push',
-        'Handshake',
-    ],
-    'VAL_LIST': [
-        'Posing',
-        'Kick', 
-        'Grab',
-        'HoldingHands'
-    ],
-    'TEST_LIST': [
-        'Posing',
-        'Kick',
-        'Grab',
-        'HoldingHands'
-    ],
-    'CAM_LIST': None
-}
-
-demo_split = {
-    'TRAIN_LIST': ['demo'],
-    'VAL_LIST': ['demo'],
-    'TEST_LIST': ['demo'],
-    'CAM_LIST': ['01','02','03','04']
-}
-
 panoptic_joints_def = {
     'neck': 0,
     'nose': 1,
@@ -91,7 +55,7 @@ panoptic_bones_def = [
     [2, 12], [12, 13], [13, 14],  # right leg
 ]
 
-class CHI3D(JointsDataset):
+class DEMO(JointsDataset):
     def __init__(self, cfg, is_train=True, is_test=False, transform=None):
         super().__init__(cfg, is_train, transform)
 
@@ -99,74 +63,28 @@ class CHI3D(JointsDataset):
         self.num_views = cfg.DATASET.CAMERA_NUM
         self.root_id = cfg.DATASET.ROOTIDX
 
-        self.split_type = 'demo'
-        if self.split_type == 'seq':
-            TRAIN_LIST = seq_split['TRAIN_LIST']
-            TEST_LIST = seq_split['TEST_LIST']
-            VAL_LIST = seq_split['VAL_LIST']
-        elif self.split_type == 'pose':
-            TRAIN_LIST = pose_split['TRAIN_LIST']
-            TEST_LIST = pose_split['TEST_LIST']
-            VAL_LIST = pose_split['VAL_LIST']
-        elif self.split_type == 'demo':
-            TRAIN_LIST = pose_split['TRAIN_LIST']
-            TEST_LIST = pose_split['TEST_LIST']
-            VAL_LIST = pose_split['VAL_LIST']
-
-        self.joint_type = 'body25'
-        if self.joint_type == 'body25':
-            interval = 1
-        elif self.joint_type == 'panoptic15':
-            interval = 5
-
-        self.has_evaluate_function = True
+        self.has_evaluate_function = False
         self.transform = transform
 
-        seqs = os.listdir(self.dataset_root)
-        if is_train:
-            self.image_set = 'train'
-            if self.split_type == 'seq':
-                self.sequence_list = [x for x in seqs if x[:3] in TRAIN_LIST]
-            elif self.split_type == 'pose':
-                self.sequence_list = [x for x in seqs if x.split('_')[1].split(' ')[0] in TRAIN_LIST]
-            elif self.split_type == 'demo':
-                self.sequence_list = ['demo']
-            self._interval = interval
-        elif is_test:
-            self.image_set = 'test'
-            if self.split_type == 'seq':
-                self.sequence_list = [x for x in seqs if x[:3] in TEST_LIST]
-            elif self.split_type == 'pose':
-                self.sequence_list = [x for x in seqs if x.split('_')[1].split(' ')[0] in TEST_LIST]
-            elif self.split_type == 'demo':
-                self.sequence_list = ['demo']
-            self._interval = interval
-        else:
-            self.image_set = 'validation'
-            if self.split_type == 'seq':
-                self.sequence_list = [x for x in seqs if x[:3] in VAL_LIST]
-            elif self.split_type == 'pose':
-                self.sequence_list = [x for x in seqs if x.split('_')[1].split(' ')[0] in VAL_LIST]
-            elif self.split_type == 'demo':
-                self.sequence_list = ['demo']
-            self._interval = interval
+        self.image_set = 'demo'
+        self.sequence_list = ['demo']
+        self._interval = 1
+        self.cam_list = ['01','02','03','04']
     
         self.cameras = self._get_cam()
-        self.db_file = 'faster_voxelpose_{}_cam{}_split_{}.pkl'.format(self.image_set, self.num_views, self.split_type)
+        self.db_file = 'faster_voxelpose_{}_cam{}.pkl'.format(self.image_set, self.num_views)
         self.db_file = osp.join(self.dataset_root, self.db_file)
 
         if osp.exists(self.db_file):
             info = pickle.load(open(self.db_file, 'rb'))
             assert info['sequence_list'] == self.sequence_list
             assert info['interval'] == self._interval
-            assert info['joint_type'] == self.joint_type
             self.db = info['db']
         else:
             self._get_db()
             info = {
                 'sequence_list': self.sequence_list,
                 'interval': self._interval,
-                'joint_type': self.joint_type,
                 'db': self.db
             }
             pickle.dump(info, open(self.db_file, 'wb'))
@@ -174,86 +92,25 @@ class CHI3D(JointsDataset):
     
     def _get_db(self):
         for seq in tqdm(self.sequence_list):
-            if self.split_type == 'demo':
-                curr_anno = osp.join(self.dataset_root, seq, 'images', demo_split['CAM_LIST'][0])
-                anno_files = sorted(glob.iglob('{:s}/*.png'.format(curr_anno)))
-            else:
-                curr_anno = osp.join(self.dataset_root, seq, self.joint_type)
-                anno_files = sorted(glob.iglob('{:s}/*.json'.format(curr_anno)))
+            curr_anno = osp.join(self.dataset_root, seq, 'images', self.cam_list[0])
+            anno_files = sorted(glob.iglob('{:s}/*.png'.format(curr_anno)))
+            anno_files += sorted(glob.iglob('{:s}/*.jpg'.format(curr_anno)))
+            print(f'load sequence: {seq}', flush=True)
 
             cameras = self.cameras[seq]
 
             # save all image paths and 3d gt joints
             for i, anno_file in enumerate(anno_files):
                 if i % self._interval == 0:
-                    if self.split_type == 'demo':
-                        all_image_path = []
-                        missing_image = False
-                        # for k in range(self.num_views):
-                        for k, v in cameras.items():
-                            # suffix = osp.basename(anno_file).replace("body3DScene", "")
-                            # prefix = "{:02d}_{:02d}".format(self.cam_list[k][0], self.cam_list[k][1])
-                            image_path = osp.join(self.dataset_root, seq, "images", k, osp.basename(anno_file))
-                            all_image_path.append(image_path)
-                        all_poses_3d = [np.random.rand(15, 3) * 1000]
-                        all_poses_3d_vis = [np.ones(15)]
-                    else:
-                        with open(anno_file, "r") as f:
-                            bodies = json.load(f)
-                        if len(bodies) == 0:
-                            continue
-
-                        all_image_path = []
-                        missing_image = False
-                        # for k in range(self.num_views):
-                        for k, v in cameras.items():
-                            # suffix = osp.basename(anno_file).replace("body3DScene", "")
-                            # prefix = "{:02d}_{:02d}".format(self.cam_list[k][0], self.cam_list[k][1])
-                            image_path = osp.join(seq, "images", k, osp.basename(anno_file))
-                            image_path = image_path.replace("json", "jpg")
-                            if not osp.exists(osp.join(self.dataset_root, image_path)):
-                                logger.info("Image not found: {}. Skipped.".format(image_path))
-                                missing_image = True
-                                break
-                        
-                            # data_numpy = cv2.imread(osp.join(self.dataset_root, image_path), cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
-                        
-                            # resize the image for preprocessing
-                            # if data_numpy.shape[0] == self.ori_image_height:
-                            #     input = cv2.warpAffine(data_numpy, self.resize_transform, 
-                            #         (int(self.image_size[0]), int(self.image_size[1])),
-                            #         flags=cv2.INTER_LINEAR)
-                            #     cv2.imwrite(osp.join(self.dataset_root, image_path), input)
-                            #     print("resize and overwrite the image:", image_path)
-                        
-                            all_image_path.append(osp.join(self.dataset_root, image_path))
-
-                        if missing_image:
-                            continue
-
-                        all_poses_3d = []
-                        all_poses_3d_vis = []
-                        for body in bodies:
-                            pose3d = np.array(body['keypoints3d']).reshape((-1, 3))
-                            if self.joint_type == 'body25':
-                                pose3d = pose3d[body25topanoptic15]
-                            pose3d = pose3d[:self.num_joints]
-
-                            # joints_vis = pose3d[:, -1]
-                            joints_vis = np.ones_like(pose3d[:, 0])
-                            joints_vis = np.maximum(joints_vis, 0.0)
-                            # ignore the joints with visibility less than 0.1
-                            if joints_vis[self.root_id] <= 0.1:
-                                continue
-
-                            # coordinate transformation
-                            # M = np.array([[1.0, 0.0, 0.0],
-                            #               [0.0, 0.0, -1.0],
-                            #               [0.0, 1.0, 0.0]])
-                            # pose3d[:, 0:3] = pose3d[:, 0:3].dot(M)
-
-                            all_poses_3d.append(pose3d[:, 0:3] * 1000.0)
-                            all_poses_3d_vis.append(joints_vis)
+                    all_image_path = []
+                    # for k in range(self.num_views):
+                    for k, v in cameras.items():
+                        # suffix = osp.basename(anno_file).replace("body3DScene", "")
+                        # prefix = "{:02d}_{:02d}".format(self.cam_list[k][0], self.cam_list[k][1])
+                        image_path = osp.join(self.dataset_root, seq, "images", k, osp.basename(anno_file))
+                        all_image_path.append(image_path)
+                    all_poses_3d = [np.random.rand(15, 3) * 1000.0]
+                    all_poses_3d_vis = [np.ones(15)]
 
                     if len(all_poses_3d) > 0:
                         self.db.append({
@@ -276,9 +133,8 @@ class CHI3D(JointsDataset):
             calib = read_cameras(osp.join(self.dataset_root, seq))
 
             for k, v in calib.items():
-                if self.split_type == 'demo':
-                    if k not in demo_split['CAM_LIST']: continue
-                sel_cam = {}
+                if k not in self.cam_list: continue
+                sel_cam = dict()
                 sel_cam['K'] = np.array(v['K'])
                 sel_cam['distCoef'] = np.array(v['dist']).flatten()
                 sel_cam['R'] = np.array(v['R'])

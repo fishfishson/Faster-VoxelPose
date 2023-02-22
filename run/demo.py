@@ -29,7 +29,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train keypoints network')
     parser.add_argument(
         '--cfg', help='experiment configure file name', required=True, type=str)
-
+    parser.add_argument(
+        '--ckpt', required=True, type=str)
     args, _ = parser.parse_known_args()
     update_config(args.cfg)
 
@@ -39,12 +40,6 @@ def parse_args():
 def main():
     args = parse_args()
     logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'demo')
-    config.WORKERS = 1
-    config.DATASET.ROOT = 'data/Fight_easymocap'
-    config.DATASET.TEST_SUBSET = 'test'
-    config.DATASET.TRAIN_SUBSET = 'test'
-    config.DATASET.ORI_IMAGE_WIDTH = 1296
-    config.DATASET.ORI_IMAGE_HEIGHT = 972
     # config.TEST.MODEL_FILE = 'final_state.pth.tar'
     cfg_name = os.path.basename(args.cfg).split('.')[0]
     writer = SummaryWriter(log_dir=tb_log_dir)
@@ -78,10 +73,10 @@ def main():
         model = torch.nn.DataParallel(model.cuda(), device_ids=gpus)
         model.to(f'cuda:{model.device_ids[0]}')
 
-    test_model_file = os.path.join(final_output_dir, config.TEST.MODEL_FILE)
-    if config.TEST.MODEL_FILE and os.path.isfile(test_model_file):
-        logger.info('=> load models state {}'.format(test_model_file))
-        model.module.load_state_dict(torch.load(test_model_file, map_location=torch.device('cuda:0')))
+    # test_model_file = os.path.join(final_output_dir, config.TEST.MODEL_FILE)
+    if config.TEST.MODEL_FILE and os.path.isfile(args.ckpt):
+        logger.info('=> load models state {}'.format(args.ckpt))
+        model.module.load_state_dict(torch.load(args.ckpt, map_location=torch.device('cuda:0')))
     else:
         raise ValueError('Check the model file for testing!')
 

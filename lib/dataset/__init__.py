@@ -12,3 +12,4 @@ from dataset.panoptic import Panoptic as panoptic
 from dataset.shelf import Shelf as shelf
 from dataset.campus import Campus as campus
 from dataset.chi3d import CHI3D as chi3d
+from dataset.demo import DEMO as demo
