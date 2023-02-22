@@ -40,8 +40,11 @@ def get_optimizer(model):
     lr = config.TRAIN.LR
     if model.module.backbone is not None:
         for params in model.module.backbone.parameters():
-            # Set to True If you want to train the whole model.
-            params.requires_grad = False
+            if config.FINETUNE_BACKBONE:
+                params.requires_grad = True
+                # Set to True If you want to train the whole model.
+            else:
+                params.requires_grad = False
 
     for params in model.module.pose_net.parameters():
         params.requires_grad = True
@@ -55,11 +58,12 @@ def get_optimizer(model):
 
 def get_data_loaders(config):
     ngpus = len(config.GPUS.split(','))
+    print('NUM OF GPUS USED: {}'.format(ngpus))
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
     train_dataset = eval('dataset.' + config.DATASET.TRAIN_DATASET)(
-        config, True,
+        config, True, False,
         transforms.Compose([
             transforms.ToTensor(),
             normalize,
@@ -73,7 +77,7 @@ def get_data_loaders(config):
         pin_memory=True)
 
     test_dataset = eval('dataset.' + config.DATASET.TEST_DATASET)(
-        config, False,
+        config, False, False,
         transforms.Compose([
             transforms.ToTensor(),
             normalize,
@@ -103,13 +107,13 @@ def main():
     cudnn.benchmark = config.CUDNN.BENCHMARK
     torch.backends.cudnn.deterministic = config.CUDNN.DETERMINISTIC
     torch.backends.cudnn.enabled = config.CUDNN.ENABLED
-    torch.autograd.set_detect_anomaly(True)
+    # torch.autograd.set_detect_anomaly(True)
 
     print('=> Constructing models ..')
     model = eval('models.' + config.MODEL + '.get')(config, is_train=True)
 
     with torch.no_grad():
-        model = torch.nn.DataParallel(model.cuda(), device_ids=gpus)
+        model = torch.nn.DataParallel(model, device_ids=gpus)
         model.to(f'cuda:{model.device_ids[0]}')
 
     model, optimizer = get_optimizer(model)
@@ -122,6 +126,7 @@ def main():
         model = load_backbone(model, config.NETWORK.PRETRAINED_BACKBONE)
         print('=> Loading weights for backbone')
     if config.TRAIN.RESUME:
+        print(f'RESUME MODEL FORM {final_output_dir}')
         start_epoch, model, optimizer, best_precision = load_checkpoint(
             model, optimizer, final_output_dir)
 
@@ -140,7 +145,7 @@ def main():
         best_model = True
         if test_loader != None and test_dataset.has_evaluate_function:
             precision = validate_3d(config, model, test_loader, final_output_dir,\
-                                    test_dataset.has_evaluate_function)
+                                    test_dataset.has_evaluate_function, epoch=epoch)
 
             if precision >= best_precision:
                 best_precision = precision
@@ -155,7 +160,7 @@ def main():
             'state_dict': model.module.state_dict(),
             'precision': best_precision,
             'optimizer': optimizer.state_dict(),
-        }, best_model, final_output_dir)
+        }, best_model, final_output_dir, 'checkpoint_{:03}.pth.tar'.format(epoch))
 
     final_model_state_file = os.path.join(final_output_dir, 'final_state.pth.tar')
     logger.info('saving final model state to {}'.format(final_model_state_file))

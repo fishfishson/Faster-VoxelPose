@@ -10,6 +10,7 @@ from __future__ import print_function
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import time
 
 from models import resnet
 from models.human_detection_net import HumanDetectionNet
@@ -25,13 +26,21 @@ class VoxelPoseNet(nn.Module):
         self.pose_net = HumanDetectionNet(cfg)
         self.joint_net = JointLocalizationNet(cfg)
 
-    def forward(self, views=None, meta=None, targets=None, input_heatmaps=None, cameras=None, resize_transform=None):
+    def forward(self, views=None, meta=None, targets=None, input_heatmaps=None, cameras=None, resize_transform=None, test_time=False):
         # views: [batch_size, num_views, num_channels, height, width]
         # input_heatmaps: [batch_size, num_views, num_joints, hm_height, hm_width]
+        if test_time:
+            start_0 = time.time()
+            
         if views is not None:
             num_views = views.shape[1]
             input_heatmaps = torch.stack([self.backbone(views[:, c]) for c in range(num_views)], dim=1)
+
+        if test_time:
+            start_1 = time.time()
+
         batch_size = input_heatmaps.shape[0]
+        resize_transform = resize_transform.to(input_heatmaps.device)
  
         # human detection network
         proposal_heatmaps_2d, proposal_heatmaps_1d, proposal_centers, \
@@ -42,7 +51,7 @@ class VoxelPoseNet(nn.Module):
         fused_poses, poses = self.joint_net(meta, input_heatmaps, proposal_centers.detach(), mask, cameras, resize_transform)
 
         # compute the training loss
-        if self.training:
+        if self.training and not test_time:
             assert targets is not None, 'proposal ground truth not set'
             proposal2gt = proposal_centers[:, :, 3]
             proposal2gt = torch.where(proposal2gt >= 0, proposal2gt, torch.zeros_like(proposal2gt))
@@ -83,7 +92,14 @@ class VoxelPoseNet(nn.Module):
 
         fused_poses = torch.cat([fused_poses, proposal_centers[:, :, 3:5].reshape(batch_size,\
                                  -1, 1, 2).repeat(1, 1, self.num_joints, 1)], dim=3)
-        return fused_poses, poses, proposal_centers.detach(), loss_dict, input_heatmaps
+        # poses = poses.transpose(0, 1)
+        if not test_time:
+            return fused_poses, poses, proposal_centers.detach(), loss_dict, input_heatmaps
+        else:
+            end_time = time.time()
+            full_time = end_time - start_0
+            pose_time = end_time - start_1
+            return fused_poses, full_time, pose_time
 
 
 def get(cfg, is_train=True):

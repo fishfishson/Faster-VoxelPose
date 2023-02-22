@@ -18,40 +18,49 @@ class ProjectLayer(nn.Module):
         self.heatmap_size = cfg.NETWORK.HEATMAP_SIZE
         self.ori_image_width = cfg.DATASET.ORI_IMAGE_WIDTH
         self.ori_image_height = cfg.DATASET.ORI_IMAGE_HEIGHT
-        self.device = torch.device(int(cfg.GPUS.split(',')[0]))
+        # self.device = torch.device(int(cfg.GPUS.split(',')[0]))
 
         # constants for back-projection
-        self.whole_space_center = torch.tensor(cfg.CAPTURE_SPEC.SPACE_CENTER, device=self.device)
-        self.whole_space_size = torch.tensor(cfg.CAPTURE_SPEC.SPACE_SIZE, device=self.device)
-        self.ind_space_size = torch.tensor(cfg.INDIVIDUAL_SPEC.SPACE_SIZE, device=self.device)
-        self.voxels_per_axis = torch.tensor(cfg.INDIVIDUAL_SPEC.VOXELS_PER_AXIS, device=self.device, dtype=torch.int32)
-        self.fine_voxels_per_axis = (self.whole_space_size / self.ind_space_size * (self.voxels_per_axis - 1)).int() + 1
+        whole_space_center = torch.tensor(cfg.CAPTURE_SPEC.SPACE_CENTER)
+        self.register_buffer('whole_space_center', whole_space_center)
+        whole_space_size = torch.tensor(cfg.CAPTURE_SPEC.SPACE_SIZE)
+        self.register_buffer('whole_space_size', whole_space_size)
+        ind_space_size = torch.tensor(cfg.INDIVIDUAL_SPEC.SPACE_SIZE)
+        self.register_buffer('ind_space_size', ind_space_size)
+        voxels_per_axis = torch.tensor(cfg.INDIVIDUAL_SPEC.VOXELS_PER_AXIS, dtype=torch.int32)
+        self.register_buffer('voxels_per_axis', voxels_per_axis)
+        fine_voxels_per_axis = (whole_space_size / ind_space_size * (voxels_per_axis - 1)).int() + 1
+        self.register_buffer('fine_voxels_per_axis', fine_voxels_per_axis)
 
-        self.scale = (self.fine_voxels_per_axis.float() - 1)  / self.whole_space_size
-        self.bias = - self.ind_space_size / 2.0 / self.whole_space_size * (self.fine_voxels_per_axis - 1)\
-                    - self.scale * (self.whole_space_center - self.whole_space_size / 2.0)
+        scale = (fine_voxels_per_axis.float() - 1)  / whole_space_size
+        self.register_buffer('scale', scale)
+        bias = - ind_space_size / 2.0 / whole_space_size * (fine_voxels_per_axis - 1)\
+                    - scale * (whole_space_center - whole_space_size / 2.0)
+        self.register_buffer('bias', bias)
 
         self.save_grid() 
-        self.sample_grid = {}
+        # self.sample_grid = {}
 
     def save_grid(self):
         print("Save the 3D grid for feature sampling")
-        grid = self.compute_grid(self.ind_space_size, self.whole_space_center, self.voxels_per_axis, device=self.device)
+        grid = self.compute_grid(self.ind_space_size, self.whole_space_center, self.voxels_per_axis)
         grid = grid.view(self.voxels_per_axis[0], self.voxels_per_axis[1], self.voxels_per_axis[2], 3)
-        self.center_grid = torch.stack([grid[:, :, 0, :2].reshape(-1, 2), grid[:, 0, :, ::2].reshape(-1, 2), \
+        center_grid = torch.stack([grid[:, :, 0, :2].reshape(-1, 2), grid[:, 0, :, ::2].reshape(-1, 2), \
                                         grid[0, :, :, 1:].reshape(-1, 2)])
-        self.fine_grid = self.compute_grid(self.whole_space_size, self.whole_space_center, self.fine_voxels_per_axis, device=self.device)
+        self.register_buffer('center_grid', center_grid)
+        fine_grid = self.compute_grid(self.whole_space_size, self.whole_space_center, self.fine_voxels_per_axis)
+        self.register_buffer('fine_grid', fine_grid)
         return
 
-    def compute_grid(self, boxSize, boxCenter, nBins, device):
+    def compute_grid(self, boxSize, boxCenter, nBins, device=None):
         if isinstance(boxSize, int) or isinstance(boxSize, float):
             boxSize = [boxSize, boxSize, boxSize]
         if isinstance(nBins, int):
             nBins = [nBins, nBins, nBins]
 
-        grid1Dx = torch.linspace(-boxSize[0] / 2, boxSize[0] / 2, nBins[0], device=device)
-        grid1Dy = torch.linspace(-boxSize[1] / 2, boxSize[1] / 2, nBins[1], device=device)
-        grid1Dz = torch.linspace(-boxSize[2] / 2, boxSize[2] / 2, nBins[2], device=device)
+        grid1Dx = torch.linspace(-boxSize[0] / 2, boxSize[0] / 2, nBins[0])
+        grid1Dy = torch.linspace(-boxSize[1] / 2, boxSize[1] / 2, nBins[1])
+        grid1Dz = torch.linspace(-boxSize[2] / 2, boxSize[2] / 2, nBins[2])
         gridx, gridy, gridz = torch.meshgrid(
             grid1Dx + boxCenter[0],
             grid1Dy + boxCenter[1],
@@ -89,10 +98,12 @@ class ProjectLayer(nn.Module):
         # compute the sample grid
         sample_grids = torch.zeros(n, 1, 1, nbins, 2, device=device)
         curr_seq = meta['seq'][i]
-        for c in range(n):
-            sample_grid = self.project_grid(cameras[curr_seq][c], w, h, nbins, resize_transform, device)
+        assert len(cameras[curr_seq]) == n
+        for c, k in enumerate(cameras[curr_seq].keys()):
+            sample_grid = self.project_grid(cameras[curr_seq][k], w, h, nbins, resize_transform, device)
             sample_grids[c] = sample_grid
-        self.sample_grid[seq] = sample_grids.view(n, voxels_per_axis[0], voxels_per_axis[1], voxels_per_axis[2], 2)
+        return sample_grids.view(n, voxels_per_axis[0], voxels_per_axis[1], voxels_per_axis[2], 2)
+        # self.sample_grid[seq] = sample_grids.view(n, voxels_per_axis[0], voxels_per_axis[1], voxels_per_axis[2], 2)
 
     def forward(self, heatmaps, index, meta, proposal_centers, cameras, resize_transform):
         device = heatmaps.device
@@ -102,9 +113,9 @@ class ProjectLayer(nn.Module):
         cubes = torch.zeros(num_people, num_joints, self.voxels_per_axis[0], self.voxels_per_axis[1], self.voxels_per_axis[2], device=device)
 
         curr_seq = meta['seq'][index]
-        if curr_seq not in self.sample_grid:
-            print("Save the sampling grid in JLN for sequence", curr_seq)
-            self.compute_sample_grid(heatmaps, meta, index, self.fine_voxels_per_axis, curr_seq, cameras, resize_transform)
+        # if curr_seq not in self.sample_grid:
+            # print("Save the sampling grid in JLN for sequence", curr_seq)
+        sample_grids = self.compute_sample_grid(heatmaps, meta, index, self.fine_voxels_per_axis, curr_seq, cameras, resize_transform)
 
         # compute the index of the top left point in the fine-grained volume
         # proposal centers: [batch_size, 7]
@@ -125,8 +136,8 @@ class ProjectLayer(nn.Module):
         for i in range(num_people):
             if torch.sum(start[i] >= end[i]) > 0:
                 continue
-            sample_grid = self.sample_grid[curr_seq]
-            sample_grid = sample_grid[:, start[i, 0]:end[i, 0], start[i, 1]:end[i, 1], start[i, 2]:end[i, 2]].reshape(n, 1, -1, 2)
+            # sample_grid = self.sample_grid[curr_seq]
+            sample_grid = sample_grids[:, start[i, 0]:end[i, 0], start[i, 1]:end[i, 1], start[i, 2]:end[i, 2]].reshape(n, 1, -1, 2)
 
             accu_cubes = torch.mean(F.grid_sample(heatmaps[index], sample_grid, align_corners=True), dim=0).view(num_joints, end[i, 0]-start[i, 0], end[i, 1]-start[i, 1], end[i, 2]-start[i, 2])
             cubes[i, :, start[i, 0]-centers_tl[i, 0]:end[i, 0]-centers_tl[i, 0], start[i, 1]-centers_tl[i, 1]:end[i, 1]-centers_tl[i, 1], start[i, 2]-centers_tl[i, 2]:end[i, 2]-centers_tl[i, 2]] = accu_cubes

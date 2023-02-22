@@ -16,11 +16,13 @@ class ProposalLayer(nn.Module):
         super(ProposalLayer, self).__init__()
         self.max_people = cfg.CAPTURE_SPEC.MAX_PEOPLE
         self.min_score = cfg.CAPTURE_SPEC.MIN_SCORE
-        self.device = torch.device(int(cfg.GPUS.split(',')[0]))
+        # self.device = torch.device(int(cfg.GPUS.split(',')[0]))
 
         # constants for getting real coordinates
-        self.scale = (torch.tensor(cfg.CAPTURE_SPEC.SPACE_SIZE) / (torch.tensor(cfg.CAPTURE_SPEC.VOXELS_PER_AXIS) - 1)).to(self.device) 
-        self.bias = (torch.tensor(cfg.CAPTURE_SPEC.SPACE_CENTER) - torch.tensor(cfg.CAPTURE_SPEC.SPACE_SIZE) / 2.0).to(self.device)
+        scale = (torch.tensor(cfg.CAPTURE_SPEC.SPACE_SIZE) / (torch.tensor(cfg.CAPTURE_SPEC.VOXELS_PER_AXIS) - 1)) 
+        self.register_buffer('scale', scale)
+        bias = (torch.tensor(cfg.CAPTURE_SPEC.SPACE_CENTER) - torch.tensor(cfg.CAPTURE_SPEC.SPACE_SIZE) / 2.0)
+        self.register_buffer('bias', bias)
 
     def filter_proposal(self, topk_index, bbox_preds, gt_3d, gt_bbox, num_person):
         batch_size = topk_index.shape[0]

@@ -10,9 +10,12 @@ import os
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 from utils.transforms import get_affine_transform, affine_transform
 from utils.cameras import project_pose
+
+from easymocap.mytools.file_utils import save_numpy_dict
 
 # coco17
 LIMBS17 = [[0, 1], [0, 2], [1, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7], [7, 9], [6, 8], [8, 10], [5, 11], [11, 13], [13, 15],
@@ -81,7 +84,7 @@ def save_debug_2d_images(config, meta, final_poses, poses, proposal_centers, pre
         os.makedirs(dirname1)
 
     prefix = os.path.join(dirname1, basename)
-    file_name = prefix + "_2d.png"
+    file_name = prefix + "_2d.jpg"
 
     batch_size = final_poses.shape[0]
     xplot = 4 
@@ -93,11 +96,13 @@ def save_debug_2d_images(config, meta, final_poses, poses, proposal_centers, pre
     plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05,
                         top=0.95, wspace=0.2, hspace=0.15)
     
-    mask = (proposal_centers[:, :, 3] >= 0).detach().cpu().numpy()
-    
+    proposal_centers = proposal_centers.detach().cpu().numpy()
+    # mask = (proposal_centers[:, :, 3] >= 0).detach().cpu().numpy()
+    mask = proposal_centers[:, :, 3] >= 0    
+
     for i in range(batch_size):
         ax = plt.subplot(yplot, xplot, 4*i+1, projection='3d')
-        curr_poses = [poses[k][i, mask[i]] for k in range(3)]
+        curr_poses = [poses[k][i, mask[i]] for k in range(len(poses))]
 
         if 'joints_3d' in meta:
             num_person = meta['num_person'][i]
@@ -302,3 +307,104 @@ def is_valid_coord(joint, width, height):
     valid_x = joint[0] >= 0 and joint[0] < width
     valid_y = joint[1] >= 0 and joint[1] < height
     return valid_x and valid_y
+
+def save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, output_dir, vis=False):
+    output = os.path.join(output_dir, 'blenderfig')
+    os.makedirs(output, exist_ok=True)
+
+    batch_size = final_poses.shape[0]
+
+    proposal_centers = proposal_centers.detach().cpu().numpy()
+    mask = proposal_centers[:, :, 3] >= 0
+
+    if vis:
+        xplot = 1
+        yplot = batch_size
+        width = 4.0 * xplot
+        height = 4.0 * yplot 
+        plt.figure(0, figsize=(width, height))
+        plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05,
+                            top=0.95, wspace=0.2, hspace=0.15)
+
+    for i in range(batch_size):
+        gt = meta['joints_3d'][i].float().numpy()
+        gt_vis = meta['joints_3d_vis'][i].float().numpy()
+        num_person = meta['num_person'][i]
+        gt = gt[:num_person]
+        gt_vis = gt_vis[:num_person]
+        
+        pred = final_poses[i, mask[i]]
+        data = {
+            'gt': np.concatenate(
+                [gt / 1000., np.ones_like(gt[..., :1])], axis=-1),
+            'pred': np.concatenate(
+                [pred[..., :3] / 1000., np.ones_like(pred[..., :1])], axis=-1)
+        }
+
+        key = meta['seq'][i].split('_')
+        frame = os.path.basename(meta['all_image_path'][i][0]).split('.')[0]
+        name = '_'.join([key[0], key[1], frame]) + '.json'
+        name = os.path.join(output, name)
+        save_numpy_dict(name, data) 
+
+        if vis:
+            ax = plt.subplot(yplot, xplot, 1, projection='3d')
+
+            if 'joints_3d' in meta:
+                num_person = meta['num_person'][i]
+                joints_3d = meta['joints_3d'][i]
+                joints_3d_vis = meta['joints_3d_vis'][i]
+
+                # 3d projection
+                for n in range(num_person):
+                    joint = joints_3d[n]
+                    joint_vis = joints_3d_vis[n]
+                    for k in eval("LIMBS{}".format(len(joint))):
+                        x = [float(joint[k[0], 0]), float(joint[k[1], 0])]
+                        y = [float(joint[k[0], 1]), float(joint[k[1], 1])]
+                        z = [float(joint[k[0], 2]), float(joint[k[1], 2])]
+                        if joint_vis[k[0]] > 0.1 and joint_vis[k[1]] > 0.1:
+                            ax.plot(x, y, z, c='r', lw=1.5, marker='o', markerfacecolor='w', markersize=2,
+                                    markeredgewidth=1)
+                        else:
+                            ax.plot(x, y, z, c='r', ls='--', lw=1.5, marker='o', markerfacecolor='w', markersize=2,
+                                    markeredgewidth=1)
+
+            for n, joint in enumerate(pred):
+                for k in eval("LIMBS{}".format(len(joint))):
+                    x = [float(joint[k[0], 0]), float(joint[k[1], 0])]
+                    y = [float(joint[k[0], 1]), float(joint[k[1], 1])]
+                    z = [float(joint[k[0], 2]), float(joint[k[1], 2])]
+                    ax.plot(x, y, z, c=colors[int(n % 10)], lw=1.5, marker='o', markerfacecolor='w', markersize=2,
+                            markeredgewidth=1)
+        
+            plt.savefig(name.replace('json', 'jpg'))
+            plt.close(0)
+
+def save_debug_3d_json_demo(config, meta, final_poses, poses, proposal_centers, output_dir, vis=False):
+    output = os.path.join(output_dir, 'demo')
+    os.makedirs(output, exist_ok=True)
+
+    batch_size = final_poses.shape[0]
+
+    proposal_centers = proposal_centers.detach().cpu().numpy()
+    mask = proposal_centers[:, :, 3] >= 0
+
+    for i in range(batch_size):
+        gt = meta['joints_3d'][i].float().numpy()
+        gt_vis = meta['joints_3d_vis'][i].float().numpy()
+        num_person = meta['num_person'][i]
+        gt = gt[:num_person]
+        gt_vis = gt_vis[:num_person]
+        
+        pred = final_poses[i, mask[i]]
+        data = {
+            'gt': np.concatenate(
+                [gt / 1000., np.ones_like(gt[..., :1])], axis=-1),
+            'pred': np.concatenate(
+                [pred[..., :3] / 1000., np.ones_like(pred[..., :1])], axis=-1)
+        }
+
+        frame = os.path.basename(meta['all_image_path'][i][0]).split('.')[0]
+        name = os.path.join(output, frame + '.json')
+        save_numpy_dict(name, data) 

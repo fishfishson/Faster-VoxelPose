@@ -17,24 +17,27 @@ class ProjectLayer(nn.Module):
         self.heatmap_size = cfg.NETWORK.HEATMAP_SIZE
         self.ori_image_width = cfg.DATASET.ORI_IMAGE_WIDTH
         self.ori_image_height = cfg.DATASET.ORI_IMAGE_HEIGHT
-        self.device = torch.device(int(cfg.GPUS.split(',')[0]))
+        # self.device = torch.device(int(cfg.GPUS.split(',')[0]))
 
         self.space_size = cfg.CAPTURE_SPEC.SPACE_SIZE
         self.space_center = cfg.CAPTURE_SPEC.SPACE_CENTER
         self.voxels_per_axis = cfg.CAPTURE_SPEC.VOXELS_PER_AXIS
 
-        self.grid = self.compute_grid(self.space_size, self.space_center, self.voxels_per_axis, device=self.device)
-        self.sample_grid = {}
+        # self.grid = self.compute_grid(self.space_size, self.space_center, self.voxels_per_axis, device=self.device)
+        grid = self.compute_grid(self.space_size, self.space_center, self.voxels_per_axis)
+        self.register_buffer('grid', grid)
+        # self.sample_grid = {}
     
-    def compute_grid(self, boxSize, boxCenter, nBins, device):
+    def compute_grid(self, boxSize, boxCenter, nBins, device=None):
         if isinstance(boxSize, int) or isinstance(boxSize, float):
             boxSize = [boxSize, boxSize, boxSize]
         if isinstance(nBins, int):
             nBins = [nBins, nBins, nBins]
 
-        grid1Dx = torch.linspace(-boxSize[0] / 2, boxSize[0] / 2, nBins[0], device=device)
-        grid1Dy = torch.linspace(-boxSize[1] / 2, boxSize[1] / 2, nBins[1], device=device)
-        grid1Dz = torch.linspace(-boxSize[2] / 2, boxSize[2] / 2, nBins[2], device=device)
+        # grid1Dx = torch.linspace(-boxSize[0] / 2, boxSize[0] / 2, nBins[0], device=device)
+        grid1Dx = torch.linspace(-boxSize[0] / 2, boxSize[0] / 2, nBins[0])
+        grid1Dy = torch.linspace(-boxSize[1] / 2, boxSize[1] / 2, nBins[1])
+        grid1Dz = torch.linspace(-boxSize[2] / 2, boxSize[2] / 2, nBins[2])
         gridx, gridy, gridz = torch.meshgrid(
             grid1Dx + boxCenter[0],
             grid1Dy + boxCenter[1],
@@ -73,16 +76,17 @@ class ProjectLayer(nn.Module):
             curr_seq = meta['seq'][i]
             assert curr_seq in cameras.keys(), "missing camera parameters for the current sequence"
             assert len(cameras[curr_seq]) == n, "inconsistent number of cameras"
-            if curr_seq not in self.sample_grid:
-                print("Save the sampling grid in HDN for sequence", curr_seq)
-                sample_grids = torch.zeros(n, 1, nbins, 2, device=device)
-                for c in range(n):
-                    sample_grids[c] = self.project_grid(cameras[curr_seq][c], w, h, nbins, resize_transform, device).squeeze(0)
-                self.sample_grid[curr_seq] = sample_grids
+            # if curr_seq not in self.sample_grid:
+                # print("Save the sampling grid in HDN for sequence", curr_seq)
+            sample_grids = torch.zeros(n, 1, nbins, 2, device=device)
+            for c, k in enumerate(cameras[curr_seq].keys()):
+                sample_grids[c] = self.project_grid(cameras[curr_seq][k], w, h, nbins, resize_transform, device).squeeze(0)
+                # self.sample_grid[curr_seq] = sample_grids
 
-            shared_sample_grid = self.sample_grid[curr_seq]
-            cubes[i] = torch.mean(F.grid_sample(heatmaps[i], shared_sample_grid, align_corners=True), dim=0).squeeze(0)
-            del shared_sample_grid
+            # shared_sample_grid = self.sample_grid[curr_seq]
+            # shared_sample_grid = sample_grids
+            cubes[i] = torch.mean(F.grid_sample(heatmaps[i], sample_grids, align_corners=True), dim=0).squeeze(0)
+            # del shared_sample_grid
             
         cubes = cubes.clamp(0.0, 1.0)
         cubes = cubes.view(batch_size, num_joints, self.voxels_per_axis[0], self.voxels_per_axis[1], self.voxels_per_axis[2]) 

@@ -20,7 +20,7 @@ from tqdm import tqdm
 import _init_paths
 from core.config import config, update_config
 from utils.utils import create_logger
-from utils.vis import save_debug_2d_images, save_debug_3d_json
+from utils.vis import save_debug_2d_images, save_debug_3d_json_demo
 import dataset
 import models
 
@@ -38,11 +38,13 @@ def parse_args():
 
 def main():
     args = parse_args()
-    logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'validate')
+    logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'demo')
     config.WORKERS = 1
-    config.DATASET.ROOT = 'data/chi3d_s03'
+    config.DATASET.ROOT = 'data/Fight_easymocap'
     config.DATASET.TEST_SUBSET = 'test'
     config.DATASET.TRAIN_SUBSET = 'test'
+    config.DATASET.ORI_IMAGE_WIDTH = 1296
+    config.DATASET.ORI_IMAGE_HEIGHT = 972
     # config.TEST.MODEL_FILE = 'final_state.pth.tar'
     cfg_name = os.path.basename(args.cfg).split('.')[0]
     writer = SummaryWriter(log_dir=tb_log_dir)
@@ -104,12 +106,7 @@ def main():
 
             # prefix = '{}_{:08}'.format(os.path.join(final_output_dir, 'validation'), i)
             # save_debug_2d_images(config, meta, final_poses, poses, proposal_centers, prefix)
-
-            key = meta['seq'][0].split('_')
-            if 'Hug' in key[1]:
-                save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=True)
-            else:
-                save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=False)
+            save_debug_3d_json_demo(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=False)
 
     if test_dataset.has_evaluate_function:
         metric, msg = test_loader.dataset.evaluate(all_final_poses)

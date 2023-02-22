@@ -68,7 +68,7 @@ class JointsDataset(Dataset):
             db_rec = self.db[idx]
 
             if self.input_heatmap_src == 'image':
-                input_heatmap = torch.zeros((1, 1, 1))
+                input_heatmaps = torch.zeros((1, 1, 1))
             
             elif self.input_heatmap_src == 'pred':
                 assert 'pred_pose2d' in db_rec and db_rec['pred_pose2d'] is not None, 'Dataset must provide pred_pose2d'
@@ -185,7 +185,12 @@ class JointsDataset(Dataset):
             all_image_path = db_rec['meta']['all_image_path']
             for image_path in all_image_path:
                 input = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
-
+                        
+                # resize the image for preprocessing
+                if input.shape[0] == self.ori_image_height:
+                    input = cv2.warpAffine(input, self.resize_transform, 
+                        (int(self.image_size[0]), int(self.image_size[1])),
+                        flags=cv2.INTER_LINEAR)
                 if self.color_rgb:
                     input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
                 if self.transform:

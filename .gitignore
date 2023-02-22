@@ -1,0 +1,7 @@
+*.slurm
+data/
+output/
+models/
+log/
+*.out
+*.pyc

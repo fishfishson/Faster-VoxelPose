@@ -11,3 +11,4 @@ from dataset.synthetic import Synthetic as synthetic
 from dataset.panoptic import Panoptic as panoptic
 from dataset.shelf import Shelf as shelf
 from dataset.campus import Campus as campus
+from dataset.chi3d import CHI3D as chi3d

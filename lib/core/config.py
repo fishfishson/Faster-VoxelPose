@@ -16,6 +16,7 @@ from easydict import EasyDict as edict
 config = edict()
 
 config.BACKBONE = 'pose_resnet'
+config.FINETUNE_BACKBONE = False
 config.GPUS = '0,1'
 config.WORKERS = 8
 config.PRINT_FREQ = 100

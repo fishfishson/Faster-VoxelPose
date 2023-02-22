@@ -23,6 +23,7 @@ from utils.utils import create_logger
 from utils.vis import save_debug_2d_images, save_debug_3d_json
 import dataset
 import models
+from core.function import speed_3d
 
 
 def parse_args():
@@ -38,9 +39,9 @@ def parse_args():
 
 def main():
     args = parse_args()
-    logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'validate')
+    logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'speed')
     config.WORKERS = 1
-    config.DATASET.ROOT = 'data/chi3d_s03'
+    config.DATASET.ROOT = 'data/chi3d_s04/'
     config.DATASET.TEST_SUBSET = 'test'
     config.DATASET.TRAIN_SUBSET = 'test'
     # config.TEST.MODEL_FILE = 'final_state.pth.tar'
@@ -83,37 +84,9 @@ def main():
     else:
         raise ValueError('Check the model file for testing!')
 
-    print("=> Validating...")
-    model.eval()
+    print("=> Speeding...")
+    speed_3d(config, model, test_loader, final_output_dir)
 
-    # loading constants of the dataset
-    cameras = test_loader.dataset.cameras
-    resize_transform = torch.as_tensor(test_loader.dataset.resize_transform, dtype=torch.float, device='cuda:{}'.format(model.device_ids[0]))
-
-    with torch.no_grad():
-        all_final_poses = []
-        for i, (inputs, _, meta, input_heatmap) in enumerate(tqdm(test_loader)):
-            if config.DATASET.TRAIN_HEATMAP_SRC == 'image':
-                final_poses, poses, proposal_centers, _, input_heatmap = model(views=inputs, meta=meta, cameras=cameras, resize_transform=resize_transform)
-            else:
-                final_poses, poses, proposal_centers, _, _ = model(meta=meta, input_heatmaps=input_heatmap, cameras=cameras, resize_transform=resize_transform)
-            
-            final_poses = final_poses.detach().cpu().numpy()
-            for b in range(final_poses.shape[0]):
-                all_final_poses.append(final_poses[b])
-
-            # prefix = '{}_{:08}'.format(os.path.join(final_output_dir, 'validation'), i)
-            # save_debug_2d_images(config, meta, final_poses, poses, proposal_centers, prefix)
-
-            key = meta['seq'][0].split('_')
-            if 'Hug' in key[1]:
-                save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=True)
-            else:
-                save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=False)
-
-    if test_dataset.has_evaluate_function:
-        metric, msg = test_loader.dataset.evaluate(all_final_poses)
-        logger.info(msg)
 
 if __name__ == "__main__":
     main()
