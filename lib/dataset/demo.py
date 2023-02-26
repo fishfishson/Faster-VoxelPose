@@ -69,7 +69,10 @@ class DEMO(JointsDataset):
         self.image_set = 'demo'
         self.sequence_list = ['demo']
         self._interval = 1
-        self.cam_list = ['01','02','03','04']
+        if cfg.DATASET.CAM_LIST is not None:
+            self.cam_list = cfg.DATASET.CAM_LIST.split(' ')
+        else:
+            self.cam_list = ['01','02','03','04']
     
         self.cameras = self._get_cam()
         self.db_file = 'faster_voxelpose_{}_cam{}.pkl'.format(self.image_set, self.num_views)

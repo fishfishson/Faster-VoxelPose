@@ -100,6 +100,7 @@ config.DATASET.ORI_IMAGE_WIDTH = 360
 config.DATASET.ORI_IMAGE_HEIGHT = 288
 config.DATASET.ROOTIDX = 2
 config.DATASET.ROOT = ''
+config.DATASET.CAM_LIST = None
 
 # Synthetic dataset
 config.SYNTHETIC = edict()
