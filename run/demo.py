@@ -31,6 +31,8 @@ def parse_args():
         '--cfg', help='experiment configure file name', required=True, type=str)
     parser.add_argument(
         '--ckpt', required=True, type=str)
+    parser.add_argument(
+        '--out', required=True, type=str)
     args, _ = parser.parse_known_args()
     update_config(args.cfg)
 
@@ -39,10 +41,12 @@ def parse_args():
 
 def main():
     args = parse_args()
-    logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'demo')
+    # logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'demo')
     # config.TEST.MODEL_FILE = 'final_state.pth.tar'
+    config.WORKERS = 1
+    config.GPUS = '0'
     cfg_name = os.path.basename(args.cfg).split('.')[0]
-    writer = SummaryWriter(log_dir=tb_log_dir)
+    # writer = SummaryWriter(log_dir=tb_log_dir)
 
     gpus = [int(i) for i in config.GPUS.split(',')]
     print('=> Loading data ..')
@@ -75,8 +79,13 @@ def main():
 
     # test_model_file = os.path.join(final_output_dir, config.TEST.MODEL_FILE)
     if config.TEST.MODEL_FILE and os.path.isfile(args.ckpt):
-        logger.info('=> load models state {}'.format(args.ckpt))
-        model.module.load_state_dict(torch.load(args.ckpt, map_location=torch.device('cuda:0')))
+        print('=> load models state {}'.format(args.ckpt))
+        ckpt = torch.load(args.ckpt, map_location=torch.device('cuda:0'))
+        if 'state_dict' in ckpt.keys():
+            state_dict = ckpt['state_dict']
+        else:
+            state_dict = ckpt
+        model.module.load_state_dict(state_dict, strict=True)
     else:
         raise ValueError('Check the model file for testing!')
 
@@ -101,11 +110,11 @@ def main():
 
             # prefix = '{}_{:08}'.format(os.path.join(final_output_dir, 'validation'), i)
             # save_debug_2d_images(config, meta, final_poses, poses, proposal_centers, prefix)
-            save_debug_3d_json_demo(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=False)
+            save_debug_3d_json_demo(config, meta, final_poses, poses, proposal_centers, args.out, vis=False)
 
-    if test_dataset.has_evaluate_function:
-        metric, msg = test_loader.dataset.evaluate(all_final_poses)
-        logger.info(msg)
+    # if test_dataset.has_evaluate_function:
+    #     metric, msg = test_loader.dataset.evaluate(all_final_poses)
+    #     logger.info(msg)
 
 if __name__ == "__main__":
     main()

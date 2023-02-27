@@ -29,7 +29,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train keypoints network')
     parser.add_argument(
         '--cfg', help='experiment configure file name', required=True, type=str)
-
+    parser.add_argument(
+        '--ckpt', required=True, type=str)
+    parser.add_argument(
+        '--out', required=True, type=str)
     args, _ = parser.parse_known_args()
     update_config(args.cfg)
 
@@ -38,14 +41,11 @@ def parse_args():
 
 def main():
     args = parse_args()
-    logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'validate')
+    # logger, final_output_dir, tb_log_dir = create_logger(config, args.cfg, 'validate')
     config.WORKERS = 1
-    config.DATASET.ROOT = 'data/chi3d_s03'
-    config.DATASET.TEST_SUBSET = 'test'
-    config.DATASET.TRAIN_SUBSET = 'test'
-    # config.TEST.MODEL_FILE = 'final_state.pth.tar'
+    config.GPUS = '0'
     cfg_name = os.path.basename(args.cfg).split('.')[0]
-    writer = SummaryWriter(log_dir=tb_log_dir)
+    # writer = SummaryWriter(log_dir=tb_log_dir)
 
     gpus = [int(i) for i in config.GPUS.split(',')]
     print('=> Loading data ..')
@@ -53,7 +53,7 @@ def main():
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
     test_dataset = eval('dataset.' + config.DATASET.TEST_DATASET)(
-        config, False, True,
+        config, False, False,
         transforms.Compose([
             transforms.ToTensor(),
             normalize,
@@ -76,10 +76,15 @@ def main():
         model = torch.nn.DataParallel(model.cuda(), device_ids=gpus)
         model.to(f'cuda:{model.device_ids[0]}')
 
-    test_model_file = os.path.join(final_output_dir, config.TEST.MODEL_FILE)
-    if config.TEST.MODEL_FILE and os.path.isfile(test_model_file):
-        logger.info('=> load models state {}'.format(test_model_file))
-        model.module.load_state_dict(torch.load(test_model_file, map_location=torch.device('cuda:0')))
+    # test_model_file = os.path.join(final_output_dir, config.TEST.MODEL_FILE)
+    if config.TEST.MODEL_FILE and os.path.isfile(args.ckpt):
+        print('=> load models state {}'.format(args.ckpt))
+        ckpt = torch.load(args.ckpt, map_location=torch.device('cuda:0'))
+        if 'state_dict' in ckpt.keys():
+            state_dict = ckpt['state_dict']
+        else:
+            state_dict = ckpt
+        model.module.load_state_dict(state_dict, strict=True)
     else:
         raise ValueError('Check the model file for testing!')
 
@@ -105,15 +110,15 @@ def main():
             # prefix = '{}_{:08}'.format(os.path.join(final_output_dir, 'validation'), i)
             # save_debug_2d_images(config, meta, final_poses, poses, proposal_centers, prefix)
 
-            key = meta['seq'][0].split('_')
-            if 'Hug' in key[1]:
-                save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=True)
-            else:
-                save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=False)
+            # key = meta['seq'][0].split('_')
+            # if 'Hug' in key[1]:
+            #     save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, final_output_dir, vis=True)
+            # else:
+            save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, args.out, vis=False)
 
-    if test_dataset.has_evaluate_function:
-        metric, msg = test_loader.dataset.evaluate(all_final_poses)
-        logger.info(msg)
+    # if test_dataset.has_evaluate_function:
+    #     metric, msg = test_loader.dataset.evaluate(all_final_poses)
+    #     logger.info(msg)
 
 if __name__ == "__main__":
     main()

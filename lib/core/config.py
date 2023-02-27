@@ -101,6 +101,9 @@ config.DATASET.ORI_IMAGE_HEIGHT = 288
 config.DATASET.ROOTIDX = 2
 config.DATASET.ROOT = ''
 config.DATASET.CAM_LIST = None
+config.DATASET.TRAIN_LIST = None
+config.DATASET.VAL_LIST = None
+config.DATASET.TEST_LIST = None
 
 # Synthetic dataset
 config.SYNTHETIC = edict()

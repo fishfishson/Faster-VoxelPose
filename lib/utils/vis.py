@@ -309,7 +309,7 @@ def is_valid_coord(joint, width, height):
     return valid_x and valid_y
 
 def save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, output_dir, vis=False):
-    output = os.path.join(output_dir, 'blenderfig')
+    output = os.path.join(output_dir)
     os.makedirs(output, exist_ok=True)
 
     batch_size = final_poses.shape[0]
@@ -334,17 +334,20 @@ def save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, outpu
         gt_vis = gt_vis[:num_person]
         
         pred = final_poses[i, mask[i]]
+        center = proposal_centers[i, mask[i]]
         data = {
             'gt': np.concatenate(
                 [gt / 1000., np.ones_like(gt[..., :1])], axis=-1),
             'pred': np.concatenate(
-                [pred[..., :3] / 1000., np.ones_like(pred[..., :1])], axis=-1)
+                [pred[..., :3] / 1000., pred[..., 3:]], axis=-1),
+            'center': np.concatenate(
+                [center[..., :3] / 1000., center[..., 3:]], axis=-1),
         }
 
-        key = meta['seq'][i].split('_')
+        seq = meta['seq'][i]
         frame = os.path.basename(meta['all_image_path'][i][0]).split('.')[0]
-        name = '_'.join([key[0], key[1], frame]) + '.json'
-        name = os.path.join(output, name)
+        # name = '_'.join([key[0], key[1], frame]) + '.json'
+        name = os.path.join(output, '_'.join([seq, frame])+'.json')
         save_numpy_dict(name, data) 
 
         if vis:
@@ -382,7 +385,7 @@ def save_debug_3d_json(config, meta, final_poses, poses, proposal_centers, outpu
             plt.close(0)
 
 def save_debug_3d_json_demo(config, meta, final_poses, poses, proposal_centers, output_dir, vis=False):
-    output = os.path.join(output_dir, 'blenderfig')
+    output = os.path.join(output_dir)
     os.makedirs(output, exist_ok=True)
 
     batch_size = final_poses.shape[0]
@@ -398,13 +401,15 @@ def save_debug_3d_json_demo(config, meta, final_poses, poses, proposal_centers, 
         gt_vis = gt_vis[:num_person]
         
         pred = final_poses[i, mask[i]]
+        center = proposal_centers[i, mask[i]]
         data = {
             'gt': np.concatenate(
                 [gt / 1000., np.ones_like(gt[..., :1])], axis=-1),
             'pred': np.concatenate(
-                [pred[..., :3] / 1000., np.ones_like(pred[..., :1])], axis=-1)
+                [pred[..., :3] / 1000., pred[..., 3:]], axis=-1),
+            'center': np.concatenate(
+                [center[..., :3] / 1000., center[..., 3:]], axis=-1),
         }
-
         frame = os.path.basename(meta['all_image_path'][i][0]).split('.')[0]
         name = os.path.join(output, frame + '.json')
         save_numpy_dict(name, data) 

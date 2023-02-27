@@ -74,9 +74,11 @@ class DEMO(JointsDataset):
         else:
             self.cam_list = ['01','02','03','04']
     
+        os.makedirs('./cache', exist_ok=True)
+        self.db_file = 'faster_voxelpose_{}_cam{}_{}.pkl'.format(self.image_set, self.num_views, self.exp_name)
+        self.db_file = osp.join('./cache', self.db_file)
+
         self.cameras = self._get_cam()
-        self.db_file = 'faster_voxelpose_{}_cam{}.pkl'.format(self.image_set, self.num_views)
-        self.db_file = osp.join(self.dataset_root, self.db_file)
 
         if osp.exists(self.db_file):
             info = pickle.load(open(self.db_file, 'rb'))

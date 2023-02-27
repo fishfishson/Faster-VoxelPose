@@ -26,6 +26,12 @@ class JointsDataset(Dataset):
         self.color_rgb = cfg.DATASET.COLOR_RGB
         self.dataset_root = self._get_dataset_root_dir(cfg)
 
+        self.exp_name = cfg.OUTPUT_DIR.split('/')[-1]
+        self.train_list = cfg.DATASET.TRAIN_LIST
+        self.val_list = cfg.DATASET.VAL_LIST
+        self.test_list = cfg.DATASET.TEST_LIST
+        self.cam_list = cfg.DATASET.CAM_LIST
+
         # relates to camera calibration
         self.ori_image_width = cfg.DATASET.ORI_IMAGE_WIDTH
         self.ori_image_height = cfg.DATASET.ORI_IMAGE_HEIGHT

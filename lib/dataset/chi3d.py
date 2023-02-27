@@ -29,35 +29,6 @@ DEBUG = False
 
 body25topanoptic15 = [1,0,8,5,6,7,12,13,14,2,3,4,9,10,11]
 
-seq_split = {
-    'TRAIN_LIST': ['s02', 's04'],
-    'VAL_LIST': ['s03'],
-    'TEST_LIST': ['s03'],
-    'CAM_LIST': None
-}
-
-pose_split = {
-    'TRAIN_LIST': [  
-        'Hug',
-        'Hit',
-        'Push',
-        'Handshake',
-    ],
-    'VAL_LIST': [
-        'Posing',
-        'Kick', 
-        'Grab',
-        'HoldingHands'
-    ],
-    'TEST_LIST': [
-        'Posing',
-        'Kick',
-        'Grab',
-        'HoldingHands'
-    ],
-    'CAM_LIST': None
-}
-
 panoptic_joints_def = {
     'neck': 0,
     'nose': 1,
@@ -92,18 +63,6 @@ class CHI3D(JointsDataset):
         self.num_views = cfg.DATASET.CAMERA_NUM
         self.root_id = cfg.DATASET.ROOTIDX
 
-        self.split_type = 'seq'
-        if self.split_type == 'seq':
-            TRAIN_LIST = seq_split['TRAIN_LIST']
-            TEST_LIST = seq_split['TEST_LIST']
-            VAL_LIST = seq_split['VAL_LIST']
-        elif self.split_type == 'pose':
-            TRAIN_LIST = pose_split['TRAIN_LIST']
-            TEST_LIST = pose_split['TEST_LIST']
-            VAL_LIST = pose_split['VAL_LIST']
-        else:
-            raise ValueError('INVALID SPLIT TYPE!')
-
         self.joint_type = 'body25'
         if self.joint_type == 'body25':
             interval = 1
@@ -116,29 +75,25 @@ class CHI3D(JointsDataset):
         seqs = os.listdir(self.dataset_root)
         if is_train:
             self.image_set = 'train'
-            if self.split_type == 'seq':
-                self.sequence_list = [x for x in seqs if x[:3] in TRAIN_LIST]
-            elif self.split_type == 'pose':
-                self.sequence_list = [x for x in seqs if x.split('_')[1].split(' ')[0] in TRAIN_LIST]
-            self._interval = interval
+            sequence_list = self.train_list
         elif is_test:
             self.image_set = 'test'
-            if self.split_type == 'seq':
-                self.sequence_list = [x for x in seqs if x[:3] in TEST_LIST]
-            elif self.split_type == 'pose':
-                self.sequence_list = [x for x in seqs if x.split('_')[1].split(' ')[0] in TEST_LIST]
-            self._interval = interval
+            sequence_list = self.test_list
         else:
             self.image_set = 'validation'
-            if self.split_type == 'seq':
-                self.sequence_list = [x for x in seqs if x[:3] in VAL_LIST]
-            elif self.split_type == 'pose':
-                self.sequence_list = [x for x in seqs if x.split('_')[1].split(' ')[0] in VAL_LIST]
-            self._interval = interval
-    
+            sequence_list = self.val_list
+        self.sequence_list = []
+        for x in sequence_list:
+            for seq in seqs:
+                if x in seq:
+                    self.sequence_list.append(seq)    
+        self._interval = interval
+
+        os.makedirs('./cache', exist_ok=True)
+        self.db_file = 'faster_voxelpose_{}_cam{}_{}.pkl'.format(self.image_set, self.num_views, self.exp_name)
+        self.db_file = osp.join('./cache', self.db_file)
+
         self.cameras = self._get_cam()
-        self.db_file = 'faster_voxelpose_{}_cam{}.pkl'.format(self.image_set, self.num_views)
-        self.db_file = osp.join(self.dataset_root, self.db_file)
 
         if osp.exists(self.db_file):
             info = pickle.load(open(self.db_file, 'rb'))
@@ -147,6 +102,7 @@ class CHI3D(JointsDataset):
             assert info['joint_type'] == self.joint_type
             self.db = info['db']
         else:
+            print(self.sequence_list)
             self._get_db()
             info = {
                 'sequence_list': self.sequence_list,
@@ -203,7 +159,10 @@ class CHI3D(JointsDataset):
                     all_poses_3d = []
                     all_poses_3d_vis = []
                     for body in bodies:
-                        pose3d = np.array(body['keypoints3d']).reshape((-1, 3))
+                        pose3d = np.array(body['keypoints3d'])
+                        if pose3d.shape[-1] == 4:
+                            pose3d = pose3d[..., :3]
+                        pose3d = pose3d.reshape(-1, 3)
                         if self.joint_type == 'body25':
                             pose3d = pose3d[body25topanoptic15]
                         pose3d = pose3d[:self.num_joints]
